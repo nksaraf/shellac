@@ -1,40 +1,60 @@
-import { ExecaSyncReturnValue } from 'execa'
-import Shell from './child-subshell/shell'
-import Command from './child-subshell/command'
-
 export type ShellacValueInterpolation =
   | string
   | boolean
   | undefined
   | number
-  | null
+  | null;
 
+import meow from "meow";
 export type ShellacInterpolations =
   | ShellacValueInterpolation
   | Promise<ShellacValueInterpolation>
-  | ((a: string) => void)
-  | ((a: string) => Promise<void>)
-  | (() => Promise<void | ShellacValueInterpolation>)
+  | (($: Env, context: ExecutionContext) => void)
+  | (($: Env, context: ExecutionContext) => Promise<void>)
+  | ((
+      $: Env,
+      context: ExecutionContext
+    ) => Promise<void | ShellacValueInterpolation>);
 
 export type ShellacReturnVal = {
-  stdout: string
-  stderr: string
-  [key: string]: string
-}
-export type ParsedToken = Array<ParseResult> & { tag: string }
-export type ParseResult = string | ParsedToken
-export type Parser = (str: string) => undefined | ParseResult
-export type ExecResult = Command | null
-export type Captures = { [key: string]: string }
-export type ShellacImpl = (
+  stdout: string;
+  stderr: string;
+  [key: string]: string;
+};
+export type ParsedToken = Array<ParseResult> & { tag: string };
+export type ParseResult = string | ParsedToken;
+export type Parser = (str: string) => undefined | ParseResult;
+export type ExecResult = any;
+export type Captures = { [key: string]: string };
+
+export type Shell = {
+  exec: ShellacImpl;
+  sh: Script;
+};
+export type ShellacImpl = ((
   s: TemplateStringsArray,
   ...interps: ShellacInterpolations[]
-) => Promise<ShellacReturnVal>
+) => Promise<void>) & {
+  in: (cwd: string, options: { env: Env }) => Shell;
+  getSh: () => Script;
+};
 
-export type ExecutionContext = {
-  interps: ShellacInterpolations[]
-  last_cmd: ExecResult
-  cwd: string
-  captures: Captures
-  shell: Shell
+export interface Script {
+  (
+    s: TemplateStringsArray,
+    ...args: ShellacInterpolations[]
+  ): () => Promise<void>;
 }
+
+export type Env = { [key: string]: any };
+
+export interface ExecutionContext extends meow.Result<meow.AnyFlags>, Shell {
+  interps: (ShellacInterpolations | ShellacInterpolations[])[];
+  last_cmd: ExecResult;
+  cwd: string;
+  env: Env;
+  captures: Captures;
+  cmd?: ParseResult;
+}
+
+export type CustomCommand = (context: ExecutionContext) => Promise<void> | void;

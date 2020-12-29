@@ -2,10 +2,12 @@
   "compilerOptions": {
     /* Basic Options */
     // "incremental": true,                   /* Enable incremental compilation */
-    "target": "es2019",
+    "target": "esnext",
     "module": "commonjs",
-    "lib": ["es2020", "dom"],
+    "lib": ["es2020"],
     "declaration": true,
+    "importHelpers": true,
+    "downlevelIteration": true,
     //    "declarationMap": true,
     "sourceMap": true,
     "strict": true,
@@ -18,5 +20,5 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"],
+  "include": ["src"]
 }

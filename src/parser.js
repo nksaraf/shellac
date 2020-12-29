@@ -105,4 +105,16 @@ const grammar = match("grammar")`
   )+
 `;
 
+const task = match("task_name")`
+  ${/[a-z\-A-Z0-9]+/} (?: ${/\s*:/}) 
+  (?: ${ignored})
+  ${grammar}
+`;
+
+const script = match("script")`
+  ${task}+
+`;
+
+export const parseScript = parse(script);
+
 export default parse(grammar);

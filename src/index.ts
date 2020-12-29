@@ -1,6 +1,6 @@
 /* NOTE: IMPORTING LIB WHICH IS COMPILED WITH REGHEX */
 // @ts-ignore
-import _parser from "../lib/parser";
+import _parser, { parseScript as _parseScript } from "../lib/parser";
 import {
   Captures,
   CustomCommand,
@@ -9,6 +9,7 @@ import {
   Script,
   Shell,
   ShellacImpl,
+  ShellacInterpolations,
 } from "./types";
 import { execute, registerCommand } from "./execute";
 import meow from "meow";
@@ -50,36 +51,7 @@ export function createShell(
 ): Shell {
   const exec: any = Object.assign(
     (async (s, ...interps) => {
-      let str = s[0];
-
-      for (let i = 0; i < interps.length; i++) {
-        const is_fn = typeof interps[i] === "function";
-        const interp_placeholder = `#__${
-          is_fn ? "FUNCTION_" : "VALUE_"
-        }${i}__#`;
-        str += interp_placeholder + s[i + 1];
-      }
-
-      if (str.length === 0) throw new Error("Must provide statements");
-
-      // console.log(str)
-
-      const parsed = parser(str);
-
-      if (!parsed || typeof parsed === "string")
-        throw new Error("Parsing error!");
-
-      const captures: Captures = {};
-
-      process.env.DEBUG &&
-        console.log(
-          "\n\n############ PARSED SCRIPT #####################\n" +
-            logAST(parsed),
-          "\ninterps: " +
-            interps +
-            "\n############ PARSED SCRIPT #####################\n\n"
-        );
-
+      let parsed = resolveTemplate(s, interps, parser);
       return await execute(parsed, {
         interps,
         last_cmd: null,
@@ -88,7 +60,7 @@ export function createShell(
         sh: createSh(exec),
         env,
         ...globalCli,
-        captures,
+        captures: {},
       });
     }) as ShellacImpl,
     {
@@ -146,6 +118,49 @@ export const run = (
   }
 };
 
+export const parseScript = (str: string) =>
+  (_parseScript as Parser)(str.trim());
+
+export const scriptTag = async (
+  s: TemplateStringsArray,
+  ...interps: ShellacInterpolations[]
+) => {
+  let parsed = resolveTemplate(s, interps, parseScript);
+  let tasks = parsed;
+  let env = {
+    ...process.env,
+    ...globalCli.flags,
+    input: globalCli.input.slice(1),
+    PATH:
+      process.env.PATH + ":" + path.join(process.cwd(), "node_modules", ".bin"),
+  };
+  const { exec, sh } = createShell(process.cwd(), {
+    env,
+  });
+
+  let task = tasks.find((task: any) => task[0] === globalCli.input[0]);
+
+  if (task) {
+    return await execute(task[1], {
+      interps,
+      last_cmd: null,
+      cwd: process.cwd(),
+      exec,
+      sh,
+      env,
+      ...globalCli,
+      captures: {},
+    });
+  } else {
+    console.log(
+      "Couldnt find script to run. Use one of following: ",
+      tasks.map((t: any) => t[0]).join(", ")
+    );
+  }
+};
+
+export const nsh = scriptTag;
+
 export const setup = (commands: Record<string, CustomCommand>) => {
   Object.keys(commands).forEach((comm) => {
     registerCommand(comm, commands[comm]);
@@ -155,3 +170,32 @@ export const setup = (commands: Record<string, CustomCommand>) => {
 export * from "./execute";
 
 export default exec;
+
+function resolveTemplate(
+  s: TemplateStringsArray,
+  interps: ShellacInterpolations[],
+  parser: any
+) {
+  let str = s[0];
+
+  for (let i = 0; i < interps.length; i++) {
+    const is_fn = typeof interps[i] === "function";
+    const interp_placeholder = `#__${is_fn ? "FUNCTION_" : "VALUE_"}${i}__#`;
+    str += interp_placeholder + s[i + 1];
+  }
+
+  if (str.length === 0) throw new Error("Must provide statements");
+
+  const parsed = parser(str);
+  if (!parsed || typeof parsed === "string") throw new Error("Parsing error!");
+
+  process.env.DEBUG &&
+    console.log(
+      "\n\n############ PARSED SCRIPT ###################\n" + logAST(parsed),
+      "\ninterps: " +
+        interps +
+        "\n############ PARSED SCRIPT ###################\n\n"
+    );
+
+  return parsed;
+}

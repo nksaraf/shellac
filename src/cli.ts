@@ -5,16 +5,21 @@ import { exec } from "./index";
 
 let firstArg = process.argv[1];
 
-if (firstArg && (firstArg.endsWith(".js") || firstArg.endsWith(".ts"))) {
+if (
+  firstArg &&
+  ["js", "ts", "tsx", "jsx"].includes(firstArg.split(".").pop() ?? "")
+) {
   if (!fs.existsSync(firstArg)) {
     throw new Error("File not found: " + firstArg);
   }
   exec`
-    $ sucrase-node ${firstArg} ${process.argv.slice(2).join(" ")}
+    $ node -r esbuild-runner/register ${firstArg} ${process.argv
+    .slice(2)
+    .join(" ")}
   `;
 } else {
   exec`
-  $ sucrase-node ${
+  $ node -r esbuild-runner/register ${
     fs.existsSync("scripts.ts") ? "scripts.ts" : "scripts.js"
   } ${process.argv.slice(1).join(" ")}
 `;

@@ -11,7 +11,7 @@ import {
   ShellacImpl,
   ShellacInterpolations,
 } from "./types";
-import { execute, registerCommand } from "./execute";
+import { execute as executeAST, registerCommand } from "./execute";
 import meow from "meow";
 import path from "path";
 
@@ -21,7 +21,7 @@ require("dotenv").config({
   path: globalCli.flags.envFile ? globalCli.flags.envFile : ".env",
 });
 
-export const parser = (str: string) => (_parser as Parser)(str.trim());
+export const parseCommands = (str: string) => (_parser as Parser)(str.trim());
 
 export const logAST = (chunk: ParseResult, depth = 0, solo = false): string => {
   if (!chunk) return "";
@@ -50,10 +50,14 @@ export function createShell(
   }: any = {}
 ): Shell {
   const exec: any = Object.assign(
-    (async (s, ...interps) => {
-      let parsed = resolveTemplate(s, interps, parser);
-      return await execute(parsed, {
-        interps,
+    (async (script, ...interpolatedValues) => {
+      let scriptAST = parseTemplateScript(
+        script,
+        interpolatedValues,
+        parseCommands
+      );
+      return await executeAST(scriptAST, {
+        interps: interpolatedValues,
         last_cmd: null,
         cwd,
         exec,
@@ -96,6 +100,7 @@ export const run = (
     env: {
       ...process.env,
       ...globalCli.flags,
+      argv: process.argv.slice(2).join(" "),
       input: globalCli.input.slice(1),
       PATH:
         process.env.PATH +
@@ -121,45 +126,63 @@ export const run = (
 export const parseScript = (str: string) =>
   (_parseScript as Parser)(str.trim());
 
-export const scriptTag = async (
+export const scriptTag = (
   s: TemplateStringsArray,
   ...interps: ShellacInterpolations[]
 ) => {
-  let parsed = resolveTemplate(s, interps, parseScript);
+  let parsed = parseTemplateScript(s, interps, parseScript);
   let tasks = parsed;
-  let env = {
-    ...process.env,
-    ...globalCli.flags,
-    input: globalCli.input.slice(1),
-    PATH:
-      process.env.PATH + ":" + path.join(process.cwd(), "node_modules", ".bin"),
-  };
-  const { exec, sh } = createShell(process.cwd(), {
-    env,
-  });
+  setup(
+    Object.fromEntries(
+      tasks.map((task: any) => [
+        task[0],
+        ({ env, exec, sh, cwd, ...cli }: any) =>
+          execute({ task: task[0], env: env, cli, shell: { exec, sh } }),
+      ])
+    )
+  );
 
-  let task = tasks.find((task: any) => task[0] === globalCli.input[0]);
-
-  if (task) {
-    return await execute(task[1], {
-      interps,
-      last_cmd: null,
-      cwd: process.cwd(),
-      exec,
-      sh,
+  async function execute({
+    task: taskName = globalCli.input[0],
+    cli = globalCli,
+    cwd = process.cwd(),
+    env = {
+      ...process.env,
+      ...globalCli.flags,
+      input: globalCli.input.slice(1),
+      argv: process.argv.slice(3).join(" "),
+      PATH:
+        process.env.PATH +
+        ":" +
+        path.join(process.cwd(), "node_modules", ".bin"),
+    },
+    shell = createShell(process.cwd(), {
       env,
-      ...globalCli,
-      captures: {},
-    });
-  } else {
-    console.log(
-      "Couldnt find script to run. Use one of following: ",
-      tasks.map((t: any) => t[0]).join(", ")
-    );
+    }),
+  } = {}) {
+    let task = tasks.find((task: any) => task[0] === taskName);
+
+    if (task) {
+      return await executeAST(task[1], {
+        interps,
+        last_cmd: null,
+        cwd: cwd,
+        ...shell,
+        env,
+        ...cli,
+        captures: {},
+      });
+    } else {
+      console.log(
+        "Couldnt find script to run. Use one of following: \n",
+        tasks.map((t: any) => t[0]).join("\n")
+      );
+    }
   }
+  return execute;
 };
 
-export const nsh = scriptTag;
+export const kush = scriptTag;
 
 export const setup = (commands: Record<string, CustomCommand>) => {
   Object.keys(commands).forEach((comm) => {
@@ -169,9 +192,9 @@ export const setup = (commands: Record<string, CustomCommand>) => {
 
 export * from "./execute";
 
-export default exec;
+export default kush;
 
-function resolveTemplate(
+function parseTemplateScript(
   s: TemplateStringsArray,
   interps: ShellacInterpolations[],
   parser: any

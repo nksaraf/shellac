@@ -7,6 +7,7 @@ import {
 } from "./types";
 import execa from "execa";
 import meow from "meow";
+import chalk from "chalk";
 
 async function IfStatement(chunk: ParsedToken, context: ExecutionContext) {
   const { interps, last_cmd } = context;
@@ -107,6 +108,8 @@ async function Command(chunk: ParsedToken, context: ExecutionContext) {
   const localCli = meow({ argv: parts.slice(1) });
 
   let env = { ...context.env, ...localCli.flags, input: localCli.input };
+
+  console.log(chalk.gray("$ " + cmd));
 
   if (commands[parts[0]]) {
     return await commands[parts[0]]({

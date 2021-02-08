@@ -1,6 +1,6 @@
 {
   "name": "kush-cli",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Protect and beautify your shell scripting",
   "keywords": [
     "shell"
